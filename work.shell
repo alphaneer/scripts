@@ -1,0 +1,51 @@
+#!/bin/bash
+#########################################################################
+# File Name: run.sh
+# Author: leiyang
+# mail: leiyang@novogene.com
+# Created Time: Fri 13 Jul 2018 10:18:50 AM CST
+#########################################################################
+
+###
+source /ALNAS01/bio/common/sge.common.sh
+###
+
+genome=$1
+left=$2
+right=$3
+
+mkdir -p cut/ log/
+runcmd "less $left  | split -d -l 10000000 -a 5 - cut/left_" 0 "vf=30g,p=0" "cut_left"
+jid_left=$jobid
+runcmd "less $right | split -d -l 10000000 -a 5 - cut/right_" 0 "vf=30g,p=0" "cut_right"
+jid_right=$jobid
+waitjid "$jid_left,$jid_right"
+
+allsamjid=
+for left in cut/left_*[0-9]
+do
+	right=${left/cut\/left_/cut\/right_}
+	bam=${left/cut\/left_/cut\/bam_}
+	runcmd "/ALBNAS09/rhm/software/anaconda/bin/bwa aln -t 5 -f $left.sai $genome $left" 0 "vf=4g,p=5" "bwa_left"
+	jid_left=$jobid
+	runcmd "/ALBNAS09/rhm/software/anaconda/bin/bwa aln -t 5 -f $right.sai $genome $right" 0 "vf=4g,p=5" "bwa_right"
+	jid_right=$jobid
+	runcmd "sleep 60 && /ALBNAS09/rhm/software/anaconda/bin/bwa sampe -s -A $genome $left.sai $right.sai $left $right | /ALNAS01/software/PUBLIC/samtools/samtools-1.2/samtools-1.2/samtools view -q 30 -bS - > $bam.bam " "$jid_left,$jid_right" "vf=1g,p=0" 'bwa_sampe'
+	jid_sam=$jobid
+	allsamjid="$allsamjid,$jid_sam"
+done
+allsamjid=`echo $allsamjid| perl -pe 's/^,//'`
+waitjid $allsamjid
+
+mkdir 01.bam
+runcmd "/ALNAS01/software/PUBLIC/samtools/samtools-1.2/samtools-1.2/samtools merge -n -\@ 20 -f -b <(find cut/ -name 'bam_*bam') 01.bam/all.bam" 0 "vf=2g,p=0" "bwa_right"
+waitjid $jobid
+
+
+
+
+
+
+
+
+
